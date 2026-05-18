@@ -1,0 +1,9 @@
+name = "cms-sekolah"
+compatibility_date = "2024-09-23"
+compatibility_flags = [ "nodejs_compat" ]
+pages_build_output_dir = "dist"
+
+# KV Namespace for Astro sessions
+[[kv_namespaces]]
+binding = "SESSION"
+id = "placeholder"
