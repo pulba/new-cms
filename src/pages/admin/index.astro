@@ -1,0 +1,379 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import AdminStatCard from "@/components/admin/AdminStatCard.astro";
+import { AdminActivityTable } from "@/components/admin/AdminActivityTable";
+import { AdminQuickAction } from "@/components/admin/AdminQuickAction";
+import { AdminWebStats } from "@/components/admin/AdminWebStats";
+import { AdminPopularNews } from "@/components/admin/AdminPopularNews";
+import { db } from "@/db";
+import { posts, galleries, inbox, activityLogs, registrations, admissionPrograms, admissionMajors } from "@/db/schema";
+import { count, eq, desc, and, sql, gte } from "drizzle-orm";
+
+// ── SSR: All queries in parallel — zero waterfall ──
+const todayStr = new Date().toISOString().split("T")[0];
+const [
+  publishedPostsRes,
+  draftPostsRes,
+  totalViewsRes,
+  totalRegsRes,
+  activeProgramsRes,
+  pendingRegsRes,
+  todayRegsRes,
+  unreadInboxRes,
+  topPosts,
+  latestPosts,
+  dbActivities,
+  activePrograms,
+  nearFullMajors,
+] = await Promise.all([
+  db.select({ value: count() }).from(posts).where(eq(posts.status, "published")),
+  db.select({ value: count() }).from(posts).where(eq(posts.status, "draft")),
+  db.select({ value: sql<number>`COALESCE(SUM(view_count), 0)` }).from(posts),
+  db.select({ value: count() }).from(registrations),
+  db.select({ value: count() }).from(admissionPrograms).where(eq(admissionPrograms.isActive, true)),
+  db.select({ value: count() }).from(registrations).where(eq(registrations.status, "pending")),
+  db.select({ value: count() }).from(registrations).where(sql`date(created_at) = ${todayStr}`),
+  db.select({ value: count() }).from(inbox).where(and(eq(inbox.isRead, false), eq(inbox.isArchived, false))),
+  // Popular News — top 5 by viewCount, > 0 only
+  db.select({
+    id: posts.id, title: posts.title, slug: posts.slug, excerpt: posts.excerpt,
+    featuredImage: posts.featuredImage, tags: posts.tags, viewCount: posts.viewCount, createdAt: posts.createdAt,
+  }).from(posts).where(and(eq(posts.status, "published"), sql`view_count > 0`)).orderBy(desc(posts.viewCount)).limit(5),
+  // Latest Posts — fallback when views insufficient
+  db.select({
+    id: posts.id, title: posts.title, slug: posts.slug, excerpt: posts.excerpt,
+    featuredImage: posts.featuredImage, tags: posts.tags, viewCount: posts.viewCount, createdAt: posts.createdAt,
+  }).from(posts).where(eq(posts.status, "published")).orderBy(desc(posts.createdAt)).limit(5),
+  // Activity logs
+  db.select().from(activityLogs).orderBy(desc(activityLogs.createdAt)).limit(5),
+  // Active programs with endDate for urgency
+  db.select({
+    id: admissionPrograms.id, title: admissionPrograms.title,
+    endDate: admissionPrograms.endDate, maxApplicants: admissionPrograms.maxApplicants,
+    registrationOpen: admissionPrograms.registrationOpen,
+  }).from(admissionPrograms).where(eq(admissionPrograms.isActive, true)),
+  // Majors where quota is ≥80% filled
+  db.select({
+    id: admissionMajors.id, name: admissionMajors.name,
+    quota: admissionMajors.quota, currentApplicants: admissionMajors.currentApplicants,
+  }).from(admissionMajors).where(and(
+    eq(admissionMajors.isActive, true),
+    sql`quota > 0 AND current_applicants >= (quota * 0.8)`
+  )),
+]);
+
+// ── Derived operational values ──
+const pendingCount = pendingRegsRes[0].value;
+const todayCount = todayRegsRes[0].value;
+const activeCount = activeProgramsRes[0].value;
+const unreadCount = unreadInboxRes[0].value;
+const totalRegs = totalRegsRes[0].value;
+
+// ── Stats Cards (4 cards, operational priority) ──
+const stats = [
+  {
+    title: "Total Pendaftar",
+    value: totalRegs,
+    icon: "how_to_reg",
+    badgeText: todayCount > 0 ? `+${todayCount} hari ini` : "0 hari ini",
+    badgeColor: todayCount > 0 ? "bg-blue-50 text-blue-600" : "bg-slate-50 text-slate-400",
+    linkText: "Lihat pendaftar",
+    linkHref: "/admin/admissions/registrations",
+  },
+  {
+    title: "Perlu Verifikasi",
+    value: pendingCount,
+    icon: "pending_actions",
+    badgeText: pendingCount > 0 ? "segera proses" : "semua terverifikasi",
+    badgeColor: pendingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600",
+    linkText: pendingCount > 0 ? "Verifikasi sekarang" : "Lihat data",
+    linkHref: "/admin/admissions/registrations?status=pending",
+  },
+  {
+    title: "Program Aktif",
+    value: activeCount,
+    icon: "school",
+    badgeText: activeCount > 0 ? `${activeCount} program dibuka` : "belum ada program",
+    badgeColor: activeCount > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500",
+    linkText: "Kelola program",
+    linkHref: "/admin/admissions/programs",
+  },
+  {
+    title: "Berita Terbit",
+    value: publishedPostsRes[0].value,
+    icon: "news",
+    badgeText: draftPostsRes[0].value > 0 ? `${draftPostsRes[0].value} draft` : "semua terbit",
+    badgeColor: "bg-green-50 text-green-600",
+    linkText: "Lihat berita",
+    linkHref: "/admin/posts",
+  },
+];
+
+// ── Urgency Alerts ──
+interface UrgencyAlert {
+  type: 'warning' | 'danger' | 'info';
+  icon: string;
+  title: string;
+  description: string;
+  cta?: string;
+  href?: string;
+}
+
+const urgencyAlerts: UrgencyAlert[] = [];
+
+// No active programs warning
+if (activeCount === 0) {
+  urgencyAlerts.push({
+    type: 'danger',
+    icon: 'warning',
+    title: 'Tidak ada program penerimaan aktif',
+    description: 'Pendaftaran tidak bisa dilakukan oleh calon siswa.',
+    cta: 'Buka program',
+    href: '/admin/admissions/programs',
+  });
+}
+
+// Pending verification urgency
+if (pendingCount > 0) {
+  urgencyAlerts.push({
+    type: 'warning',
+    icon: 'pending_actions',
+    title: `${pendingCount} pendaftar menunggu verifikasi`,
+    description: 'Segera proses agar calon siswa tidak menunggu terlalu lama.',
+    cta: 'Verifikasi sekarang',
+    href: '/admin/admissions/registrations?status=pending',
+  });
+}
+
+// Admissions closing soon
+const now = new Date();
+for (const prog of activePrograms) {
+  if (prog.endDate) {
+    const end = new Date(prog.endDate);
+    const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysLeft > 0 && daysLeft <= 7) {
+      urgencyAlerts.push({
+        type: 'warning',
+        icon: 'schedule',
+        title: `"${prog.title}" tutup dalam ${daysLeft} hari`,
+        description: `Pendaftaran berakhir pada ${new Date(prog.endDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}.`,
+        cta: 'Lihat program',
+        href: '/admin/admissions/programs',
+      });
+    } else if (daysLeft <= 0 && prog.registrationOpen) {
+      urgencyAlerts.push({
+        type: 'danger',
+        icon: 'event_busy',
+        title: `"${prog.title}" sudah melewati tanggal tutup`,
+        description: 'Program ini masih terbuka padahal tanggal akhir sudah terlewat.',
+        cta: 'Tutup program',
+        href: '/admin/admissions/programs',
+      });
+    }
+  }
+}
+
+// Near-full quota majors
+for (const m of nearFullMajors) {
+  const pct = m.quota > 0 ? Math.round(((m.currentApplicants || 0) / m.quota) * 100) : 0;
+  if (pct >= 100) {
+    urgencyAlerts.push({
+      type: 'danger',
+      icon: 'group_off',
+      title: `Kuota "${m.name}" sudah penuh`,
+      description: `${m.currentApplicants}/${m.quota} pendaftar.`,
+      cta: 'Kelola jurusan',
+      href: '/admin/admissions/majors',
+    });
+  } else if (pct >= 80) {
+    urgencyAlerts.push({
+      type: 'info',
+      icon: 'group',
+      title: `Kuota "${m.name}" hampir penuh (${pct}%)`,
+      description: `${m.currentApplicants}/${m.quota} pendaftar.`,
+      cta: 'Lihat jurusan',
+      href: '/admin/admissions/majors',
+    });
+  }
+}
+
+// Unread messages
+if (unreadCount > 0) {
+  urgencyAlerts.push({
+    type: 'info',
+    icon: 'mail',
+    title: `${unreadCount} pesan belum dibaca`,
+    description: 'Ada pesan masuk dari pengunjung website.',
+    cta: 'Buka inbox',
+    href: '/admin/inbox',
+  });
+}
+
+// ── Website Stats ──
+const webStats = {
+  totalPageViews: totalViewsRes[0]?.value || 0,
+  totalPublishedPosts: publishedPostsRes[0].value,
+  totalRegistrations: totalRegs,
+  activePrograms: activeCount,
+};
+
+// ── Helpers ──
+function getRelativeTime(dateString: string) {
+  const date = new Date(dateString);
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diffInSeconds < 60) return `${Math.max(0, diffInSeconds)} detik lalu`;
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes} menit lalu`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours} jam lalu`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 30) return `${diffInDays} hari lalu`;
+  return date.toLocaleDateString("id-ID");
+}
+
+function excerptAction(action: string, maxLen = 55) {
+  if (action.length <= maxLen) return action;
+  return action.substring(0, maxLen).trimEnd() + "…";
+}
+
+// ── Activity Feed (real data, with module icon) ──
+let activities = dbActivities.map((log) => ({
+  user: log.userName,
+  action: excerptAction(log.action),
+  time: getRelativeTime(log.createdAt),
+  status: log.status as any,
+  avatar: log.userAvatar || undefined,
+  module: log.moduleName || 'Sistem',
+}));
+
+if (activities.length === 0) {
+  activities = [{
+    user: "Sistem",
+    action: "Belum ada aktivitas tercatat",
+    time: "—",
+    status: "Info" as any,
+    module: "General",
+  }];
+}
+
+// ── Quick Actions (admissions first) ──
+const actions = [
+  { title: "Verifikasi Pendaftaran", description: `${pendingCount} menunggu`, icon: "domain_verification", href: "/admin/admissions/registrations?status=pending" },
+  { title: "Data Pendaftar", description: "Kelola pendaftaran", icon: "how_to_reg", href: "/admin/admissions/registrations" },
+  { title: "Program Penerimaan", description: `${activeCount} program aktif`, icon: "school", href: "/admin/admissions/programs" },
+  { title: "Tambah Berita", description: "Buat berita baru", icon: "edit_document", href: "/admin/posts/new" },
+  { title: "Upload Banner", description: "Banner utama", icon: "image", href: "/admin/banners" },
+  { title: "Pesan Masuk", description: `${unreadCount} belum dibaca`, icon: "mail", href: "/admin/inbox" },
+];
+
+// ── Popular/Latest News (adaptive title + data) ──
+const MIN_VIEWS_THRESHOLD = 3; // need at least 3 articles with views to show "Populer"
+const hasEnoughViews = topPosts.length >= MIN_VIEWS_THRESHOLD;
+const newsTitle = hasEnoughViews ? "Berita Populer" : "Berita Terbaru";
+const newsSource = hasEnoughViews ? topPosts : latestPosts;
+
+const newsItems = newsSource.map((p) => {
+  const firstTag = p.tags ? p.tags.split(",")[0]?.trim() : "Umum";
+  return {
+    id: p.id,
+    title: p.title,
+    category: firstTag,
+    publishDate: p.createdAt ? getRelativeTime(p.createdAt) : "—",
+    excerpt: p.excerpt || "",
+    image: p.featuredImage || "",
+    views: p.viewCount || 0,
+  };
+});
+
+const { user } = Astro.locals;
+const currentDate = new Intl.DateTimeFormat('id-ID', {
+  weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+}).format(now);
+---
+
+<AdminLayout title="Dashboard Utama">
+  <!-- Hero (compact) -->
+  <div class="relative bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 overflow-hidden shadow-[0_2px_12px_rgba(30,64,175,0.04)] py-5 px-6 md:px-8 rounded-2xl mb-6">
+    <div class="relative z-10 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight">
+          Selamat datang, {user?.displayName || "Admin"}
+        </h1>
+        <div class="inline-flex items-center gap-2 mt-1.5 text-xs font-semibold text-blue-700">
+          <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+          {currentDate}
+        </div>
+      </div>
+      <div class="hidden md:block w-24 h-24 flex-shrink-0 opacity-80">
+        <img
+          src="https://illustrations.popsy.co/amber/student-going-to-school.svg"
+          alt=""
+          class="w-full h-full object-contain drop-shadow-sm"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Urgency Alerts -->
+  {urgencyAlerts.length > 0 && (
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+      {urgencyAlerts.slice(0, 4).map((alert) => (
+        <div class:list={[
+          "flex items-start gap-3 p-4 rounded-xl border",
+          alert.type === 'danger' && "bg-red-50 border-red-200",
+          alert.type === 'warning' && "bg-amber-50 border-amber-200",
+          alert.type === 'info' && "bg-blue-50 border-blue-200",
+        ]}>
+          <span class:list={[
+            "material-symbols-outlined text-lg mt-0.5 flex-shrink-0",
+            alert.type === 'danger' && "text-red-500",
+            alert.type === 'warning' && "text-amber-500",
+            alert.type === 'info' && "text-blue-500",
+          ]}>{alert.icon}</span>
+          <div class="flex-1 min-w-0">
+            <p class:list={[
+              "text-sm font-bold leading-snug",
+              alert.type === 'danger' && "text-red-800",
+              alert.type === 'warning' && "text-amber-800",
+              alert.type === 'info' && "text-blue-800",
+            ]}>{alert.title}</p>
+            <p class="text-xs text-slate-500 mt-0.5">{alert.description}</p>
+          </div>
+          {alert.cta && alert.href && (
+            <a href={alert.href} class:list={[
+              "text-[11px] font-bold px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 self-center transition-colors",
+              alert.type === 'danger' && "bg-red-600 text-white hover:bg-red-700",
+              alert.type === 'warning' && "bg-amber-600 text-white hover:bg-amber-700",
+              alert.type === 'info' && "bg-blue-600 text-white hover:bg-blue-700",
+            ]}>{alert.cta}</a>
+          )}
+        </div>
+      ))}
+    </div>
+  )}
+
+  <!-- Stats Grid — 4 cols on desktop, 2x2 on tablet, stacked on mobile -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
+    {stats.map((stat) => <AdminStatCard {...stat} />)}
+  </div>
+
+  <!-- Main Content Grid -->
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-8">
+    <div class="flex flex-col h-auto">
+      <AdminActivityTable activities={activities} />
+    </div>
+    <div class="flex flex-col">
+      <AdminQuickAction actions={actions} />
+    </div>
+  </div>
+
+  <!-- Full Width Web Stats -->
+  <div class="w-full mb-8">
+    <AdminWebStats {...webStats} />
+  </div>
+
+  <!-- News Section (adaptive title) -->
+  <div class="mt-4">
+    <AdminPopularNews news={newsItems} title={newsTitle} showViews={hasEnoughViews} />
+  </div>
+</AdminLayout>

@@ -1,0 +1,8 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { PremiumSettingsCenter } from "@/components/admin/PremiumSettingsCenter";
+---
+
+<AdminLayout title="Pengaturan Website">
+  <PremiumSettingsCenter client:load defaultTab="identity" />
+</AdminLayout>

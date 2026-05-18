@@ -1,0 +1,46 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { PostEditor } from "@/components/admin/PostEditor";
+
+const { id } = Astro.params;
+const postId = parseInt(id!);
+---
+
+<AdminLayout title="Edit Berita">
+  <!-- Skeleton fallback visible until React hydrates -->
+  <div id="editor-skeleton" class="space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-md bg-slate-100 animate-pulse"></div>
+        <div>
+          <div class="h-5 w-40 bg-slate-100 rounded animate-pulse mb-1"></div>
+          <div class="h-4 w-16 bg-slate-100 rounded animate-pulse"></div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <div class="h-9 w-28 bg-slate-100 rounded-md animate-pulse"></div>
+        <div class="h-9 w-24 bg-slate-100 rounded-md animate-pulse"></div>
+      </div>
+    </div>
+    <div class="h-px bg-slate-200"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-4">
+        <div class="h-10 bg-slate-100 rounded-md animate-pulse"></div>
+        <div class="h-10 bg-slate-100 rounded-md animate-pulse"></div>
+        <div class="h-64 bg-slate-100 rounded-md animate-pulse"></div>
+      </div>
+      <div class="space-y-4">
+        <div class="h-40 bg-slate-100 rounded-md animate-pulse"></div>
+        <div class="h-32 bg-slate-100 rounded-md animate-pulse"></div>
+      </div>
+    </div>
+  </div>
+  <PostEditor client:idle postId={postId} />
+  <script>
+    // Hide skeleton once React component mounts
+    document.addEventListener('astro:page-load', () => {
+      const skeleton = document.getElementById('editor-skeleton');
+      setTimeout(() => { if (skeleton) skeleton.style.display = 'none'; }, 100);
+    });
+  </script>
+</AdminLayout>

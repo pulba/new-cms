@@ -1,0 +1,8 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { MediaManager } from "@/components/admin/MediaManager";
+---
+
+<AdminLayout title="Media Library">
+  <MediaManager client:load />
+</AdminLayout>

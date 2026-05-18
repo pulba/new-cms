@@ -1,0 +1,63 @@
+---
+import "@/styles/globals.css";
+import { Sidebar } from "@/components/admin/Sidebar";
+import { AdminTopbar } from "@/components/admin/AdminTopbar";
+import { Toaster } from "@/components/ui/sonner";
+import { ViewTransitions } from "astro:transitions";
+
+interface Props {
+	title: string;
+}
+
+const { title } = Astro.props;
+const { user } = Astro.locals;
+---
+
+<!doctype html>
+<html lang="id">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="description" content="Admin CMS Sekolah" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{title} | Admin CMS Sekolah</title>
+		<ViewTransitions />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+			rel="stylesheet"
+		/>
+		<style is:global>
+			.material-symbols-outlined {
+				font-variation-settings:
+					"FILL" 0,
+					"wght" 400,
+					"GRAD" 0,
+					"opsz" 24;
+				vertical-align: middle;
+			}
+			body {
+				background-color: #fbf8ff;
+			}
+		</style>
+	</head>
+	<body
+		class="min-h-screen bg-[#fbf8ff] text-[#1a1b22] font-sans antialiased overflow-x-hidden"
+	>
+		<div class="flex min-h-screen">
+			<Sidebar client:load transition:persist="sidebar" />
+			<div class="flex-1 flex flex-col min-h-screen admin-main-content min-w-0 max-w-full overflow-x-hidden relative">
+				<AdminTopbar
+					client:load
+					userName={user?.displayName || user?.email}
+					userRole={user?.role?.toUpperCase()}
+					userPhoto={user?.photoUrl}
+				/>
+				<main class="flex-1 p-[var(--admin-p)] w-full max-w-full lg:max-w-[1600px] mx-auto min-w-0 overflow-x-hidden">
+					<slot />
+				</main>
+			</div>
+		</div>
+		<Toaster client:load />
+	</body>
+</html>

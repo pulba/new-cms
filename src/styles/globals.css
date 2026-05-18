@@ -1,0 +1,261 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+
+    /* Sidebar Dimensions */
+    --sidebar-w: 256px;
+    --sidebar-w-collapsed: 80px;
+    
+    /* Current Active Sidebar Width (Dynamic via data-attribute) */
+    --active-sidebar-w: var(--sidebar-w);
+
+    /* Density Tokens (Adaptive) */
+    --admin-p: clamp(1rem, 2.5vw, 2rem);
+    --admin-p-inner: clamp(0.75rem, 2vw, 1.5rem);
+    --admin-gap: clamp(1rem, 2vw, 1.5rem);
+    --admin-r: clamp(0.75rem, 1.5vw, 1.25rem);
+    
+    /* Fluid Typography Scale */
+    --fs-h1: clamp(1.75rem, 4.5vw, 3rem);
+    --fs-h2: clamp(1.5rem, 3.5vw, 2.25rem);
+    --fs-h3: clamp(1.25rem, 2.5vw, 1.75rem);
+    --fs-base: clamp(0.875rem, 1.5vw, 1rem);
+    --fs-sm: clamp(0.75rem, 1.2vw, 0.875rem);
+    --fs-xs: clamp(0.65rem, 1vw, 0.75rem);
+  }
+
+  /* Dynamic Sidebar Logic */
+  :root[data-sidebar-state="collapsed"] {
+    --active-sidebar-w: var(--sidebar-w-collapsed);
+  }
+  
+  :root[data-sidebar-state="mobile-closed"] {
+    --active-sidebar-w: 0px;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Tiptap Editor Styles */
+.tiptap {
+  outline: none;
+}
+
+.tiptap h1 {
+  @apply text-2xl font-bold mb-4;
+}
+
+.tiptap h2 {
+  @apply text-xl font-semibold mb-3;
+}
+
+.tiptap h3 {
+  @apply text-lg font-semibold mb-2;
+}
+
+.tiptap p {
+  @apply mb-3;
+}
+
+.tiptap ul {
+  @apply list-disc pl-6 mb-3;
+}
+
+.tiptap ol {
+  @apply list-decimal pl-6 mb-3;
+}
+
+.tiptap li {
+  @apply mb-1;
+}
+
+.tiptap blockquote {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic my-4;
+}
+
+.tiptap pre {
+  @apply bg-muted p-4 rounded-md my-4 overflow-x-auto;
+}
+
+.tiptap code {
+  @apply bg-muted px-1.5 py-0.5 rounded text-sm;
+}
+
+.tiptap hr {
+  @apply my-6 border-border;
+}
+
+/* Active toolbar button */
+button[data-active="true"] {
+  @apply bg-muted;
+}
+
+/* --- SYSTEM LEVEL RESPONSIVE UTILITIES --- */
+
+.admin-main-content {
+  margin-left: var(--active-sidebar-w);
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (max-width: 767px) {
+  .admin-main-content {
+    margin-left: 0 !important;
+  }
+}
+
+/* Global Responsive Grid Primitives */
+.responsive-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: var(--admin-gap);
+}
+@media (min-width: 768px) {
+  .responsive-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
+  .responsive-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.responsive-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: var(--admin-gap);
+}
+@media (min-width: 1024px) {
+  .responsive-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Adaptive Density Application */
+.admin-card {
+  @apply bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)];
+  padding: var(--admin-p);
+  border-radius: var(--admin-r);
+}
+
+.admin-section-gap {
+  margin-bottom: var(--admin-gap);
+}
+
+/* Adaptive Media & Scaling */
+.adaptive-media {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 767px) {
+  .adaptive-illustration {
+    max-height: 180px;
+    width: auto;
+    margin: 0 auto;
+  }
+  .adaptive-chart {
+    height: 250px !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .adaptive-illustration {
+    max-height: 220px;
+  }
+}
+
+/* Hybrid Tablet Data Cards (Base Logic) */
+@media (max-width: 1023px) {
+  .table-to-card thead {
+    display: none;
+  }
+  .table-to-card tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: var(--admin-p);
+    border-bottom: 1px solid theme('colors.slate.100');
+    position: relative;
+  }
+  .table-to-card td:not(.hidden) {
+    padding: 0 !important;
+    border: none !important;
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+  }
+  /* Allow 3-line clamp on mobile for news titles */
+  .table-to-card td span[style*="WebkitLineClamp"] {
+    -webkit-line-clamp: 3 !important;
+  }
+}
+
+/* Fluid Typography Utilities */
+.text-fluid-h1 { font-size: var(--fs-h1); font-weight: 800; line-height: 1.2; }
+.text-fluid-h2 { font-size: var(--fs-h2); font-weight: 700; line-height: 1.3; }
+.text-fluid-h3 { font-size: var(--fs-h3); font-weight: 700; line-height: 1.4; }
+.text-fluid-base { font-size: var(--fs-base); }
+.text-fluid-sm { font-size: var(--fs-sm); }
+.text-fluid-xs { font-size: var(--fs-xs); }
+
+/* No-scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

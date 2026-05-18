@@ -1,0 +1,35 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { UserManager } from "@/components/admin/UserManager";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+
+// Role Guard: admin-only page
+const user = Astro.locals.user;
+if (!user || user.role !== "admin") {
+  return Astro.redirect("/admin");
+}
+
+const ownerEmail = import.meta.env.OWNER_ADMIN_EMAIL || "";
+
+// SSR: fetch all users directly from DB — no API waterfall
+const allUsers = await db
+  .select({
+    id: users.id,
+    uid: users.uid,
+    email: users.email,
+    displayName: users.displayName,
+    photoUrl: users.photoUrl,
+    role: users.role,
+    isActive: users.isActive,
+    sessionVersion: users.sessionVersion,
+    lastLogin: users.lastLogin,
+    createdAt: users.createdAt,
+  })
+  .from(users);
+---
+
+<AdminLayout title="Pengguna & Akses">
+  <UserManager client:idle currentUserId={user.id} ownerEmail={ownerEmail} initialUsers={allUsers} />
+</AdminLayout>
+

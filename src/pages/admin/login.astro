@@ -1,0 +1,40 @@
+---
+import "@/styles/globals.css";
+import { LoginForm } from "@/components/admin/LoginForm";
+import { Toaster } from "@/components/ui/sonner";
+import { SESSION_COOKIE_NAME } from "@/lib/auth-server";
+
+// Check if user is already logged in (via cookie)
+const sessionCookie = Astro.cookies.get(SESSION_COOKIE_NAME)?.value;
+if (sessionCookie) {
+  return Astro.redirect("/admin");
+}
+---
+
+<html lang="id">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+		<title>Admin Login | CMS Sekolah Modern</title>
+    <style>
+      .bg-academic-overlay {
+        background-image: linear-gradient(rgba(248, 250, 252, 0.94), rgba(248, 250, 252, 0.94)), url(https://images.unsplash.com/photo-1521587760476-6c12a4b040da?q=80&w=2070&auto=format&fit=crop);
+        background-size: cover;
+        background-position: center;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+      }
+    </style>
+	</head>
+	<body class="bg-slate-50 font-sans h-screen overflow-hidden">
+    <main class="h-full w-full flex items-center justify-center p-6 bg-academic-overlay">
+		  <LoginForm client:load />
+    </main>
+
+    <Toaster client:load />
+	</body>
+</html>

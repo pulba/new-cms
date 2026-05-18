@@ -1,0 +1,198 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { db } from "@/db";
+import { registrations, admissionPrograms, admissionMajors } from "@/db/schema";
+import { eq, sql, desc } from "drizzle-orm";
+
+// SSR: Aggregate stats directly from DB — no API waterfall
+const statusCounts = await db
+  .select({
+    status: registrations.status,
+    count: sql<number>`count(*)`,
+  })
+  .from(registrations)
+  .groupBy(registrations.status);
+
+const statusMap: Record<string, number> = {};
+let totalAll = 0;
+statusCounts.forEach((s) => {
+  statusMap[s.status] = s.count;
+  totalAll += s.count;
+});
+
+// Programs with registration counts
+const programs = await db
+  .select({
+    id: admissionPrograms.id,
+    title: admissionPrograms.title,
+    academicYear: admissionPrograms.academicYear,
+    isActive: admissionPrograms.isActive,
+    registrationOpen: admissionPrograms.registrationOpen,
+    maxApplicants: admissionPrograms.maxApplicants,
+    enableMajorSelection: admissionPrograms.enableMajorSelection,
+  })
+  .from(admissionPrograms)
+  .orderBy(desc(admissionPrograms.createdAt));
+
+const programStats = await Promise.all(
+  programs.map(async (p) => {
+    const count = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(registrations)
+      .where(eq(registrations.programId, p.id));
+    return { ...p, totalRegs: count[0]?.count || 0 };
+  })
+);
+
+// Majors with quota usage
+const majors = await db
+  .select({
+    id: admissionMajors.id,
+    name: admissionMajors.name,
+    quota: admissionMajors.quota,
+    currentApplicants: admissionMajors.currentApplicants,
+    programId: admissionMajors.programId,
+    programTitle: admissionPrograms.title,
+  })
+  .from(admissionMajors)
+  .leftJoin(admissionPrograms, eq(admissionMajors.programId, admissionPrograms.id))
+  .orderBy(admissionMajors.programId, admissionMajors.sortOrder);
+
+// Recent registrations (last 5)
+const recent = await db
+  .select({
+    registrationNumber: registrations.registrationNumber,
+    fullName: registrations.fullName,
+    status: registrations.status,
+    createdAt: registrations.createdAt,
+    programTitle: admissionPrograms.title,
+  })
+  .from(registrations)
+  .leftJoin(admissionPrograms, eq(registrations.programId, admissionPrograms.id))
+  .orderBy(desc(registrations.createdAt))
+  .limit(5);
+
+const statusConfig: Record<string, { label: string; icon: string; color: string; bgColor: string }> = {
+  pending: { label: "Menunggu", icon: "hourglass_top", color: "text-amber-600", bgColor: "bg-amber-50" },
+  verified: { label: "Terverifikasi", icon: "verified", color: "text-blue-600", bgColor: "bg-blue-50" },
+  interview: { label: "Wawancara", icon: "groups", color: "text-purple-600", bgColor: "bg-purple-50" },
+  accepted: { label: "Diterima", icon: "check_circle", color: "text-green-600", bgColor: "bg-green-50" },
+  rejected: { label: "Ditolak", icon: "cancel", color: "text-red-600", bgColor: "bg-red-50" },
+  waitlisted: { label: "Cadangan", icon: "schedule", color: "text-slate-600", bgColor: "bg-slate-50" },
+};
+---
+
+<AdminLayout title="Dashboard Penerimaan">
+  <div class="space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Dashboard Penerimaan</h1>
+      <p class="text-sm text-gray-500">Ringkasan data pendaftaran peserta didik baru.</p>
+    </div>
+
+    <!-- Total Card -->
+    <div class="admin-card flex items-center gap-4 !py-6">
+      <div class="w-14 h-14 rounded-2xl bg-blue-900/10 flex items-center justify-center">
+        <span class="material-symbols-outlined text-blue-900 text-3xl">school</span>
+      </div>
+      <div>
+        <p class="text-sm text-gray-500">Total Pendaftar</p>
+        <p class="text-3xl font-bold text-blue-900">{totalAll}</p>
+      </div>
+    </div>
+
+    <!-- Status Cards Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {Object.entries(statusConfig).map(([key, cfg]) => (
+        <div class={`admin-card !p-4 ${cfg.bgColor} border-0`}>
+          <div class="flex items-center gap-2 mb-2">
+            <span class={`material-symbols-outlined text-lg ${cfg.color}`}>{cfg.icon}</span>
+            <span class="text-xs font-semibold text-gray-600 uppercase tracking-wider">{cfg.label}</span>
+          </div>
+          <p class={`text-2xl font-bold ${cfg.color}`}>{statusMap[key] || 0}</p>
+        </div>
+      ))}
+    </div>
+
+    <!-- Quota per Major -->
+    {majors.length > 0 && (
+      <div class="admin-card">
+        <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined text-blue-900 text-lg">bar_chart</span>
+          Kuota per Jurusan
+        </h2>
+        <div class="space-y-3">
+          {majors.map((m) => {
+            const pct = m.quota > 0 ? Math.round((m.currentApplicants / m.quota) * 100) : 0;
+            const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
+            return (
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-medium">{m.name} <span class="text-xs text-gray-400">({m.programTitle})</span></span>
+                  <span class="text-xs font-semibold text-gray-600">{m.currentApplicants} / {m.quota}</span>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-2">
+                  <div class={`${barColor} h-2 rounded-full transition-all`} style={`width: ${Math.min(pct, 100)}%`}></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Program Summary -->
+      <div class="admin-card">
+        <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined text-blue-900 text-lg">campaign</span>
+          Program Aktif
+        </h2>
+        <div class="space-y-3">
+          {programStats.map((p) => (
+            <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+              <div>
+                <p class="font-medium text-sm">{p.title}</p>
+                <p class="text-xs text-gray-500">TA {p.academicYear}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-lg font-bold text-blue-900">{p.totalRegs}</p>
+                <p class="text-xs text-gray-400">
+                  {p.maxApplicants ? `/ ${p.maxApplicants} kuota` : "tanpa batas"}
+                </p>
+              </div>
+            </div>
+          ))}
+          {programStats.length === 0 && (
+            <p class="text-sm text-gray-400 text-center py-4">Belum ada program.</p>
+          )}
+        </div>
+      </div>
+
+      <!-- Recent Registrations -->
+      <div class="admin-card">
+        <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined text-blue-900 text-lg">history</span>
+          Pendaftar Terbaru
+        </h2>
+        <div class="space-y-2">
+          {recent.map((r) => (
+            <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+              <div>
+                <p class="font-medium text-sm">{r.fullName}</p>
+                <p class="text-xs text-gray-500">{r.registrationNumber} · {r.programTitle}</p>
+              </div>
+              <div>
+                <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${statusConfig[r.status]?.bgColor || ''} ${statusConfig[r.status]?.color || ''}`}>
+                  {statusConfig[r.status]?.label || r.status}
+                </span>
+              </div>
+            </div>
+          ))}
+          {recent.length === 0 && (
+            <p class="text-sm text-gray-400 text-center py-4">Belum ada pendaftar.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

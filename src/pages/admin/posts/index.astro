@@ -1,0 +1,57 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { PostsTable } from "@/components/admin/PostsTable";
+import { db } from "@/db";
+import { posts, users } from "@/db/schema";
+import { eq, desc, sql } from "drizzle-orm";
+
+// SSR: fetch first page of posts directly from DB — no API waterfall
+const limit = 10;
+const allPosts = await db
+  .select({
+    id: posts.id,
+    title: posts.title,
+    slug: posts.slug,
+    excerpt: posts.excerpt,
+    status: posts.status,
+    featuredImage: posts.featuredImage,
+    tags: posts.tags,
+    createdAt: posts.createdAt,
+    updatedAt: posts.updatedAt,
+    authorName: users.displayName,
+  })
+  .from(posts)
+  .leftJoin(users, eq(posts.authorId, users.id))
+  .orderBy(desc(posts.createdAt))
+  .limit(limit)
+  .offset(0);
+
+const countResult = await db
+  .select({ count: sql<number>`count(*)` })
+  .from(posts);
+const total = countResult[0]?.count || 0;
+
+const initialData = {
+  data: allPosts,
+  pagination: {
+    page: 1,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  },
+};
+---
+
+<AdminLayout title="Daftar Berita">
+  <div class="mb-8 min-w-0 max-w-full">
+    <nav class="flex flex-wrap items-center text-fluid-xs text-slate-500 mb-2 font-medium min-w-0">
+      <a href="/admin" class="hover:text-blue-700 transition-colors shrink-0">CMS Dashboard</a>
+      <span class="material-symbols-outlined mx-1 text-sm shrink-0">chevron_right</span>
+      <span class="text-blue-700 font-semibold shrink-0">Daftar Berita</span>
+    </nav>
+    <h1 class="text-fluid-h1 font-bold text-slate-900 tracking-tight">Daftar Berita</h1>
+  </div>
+
+  <PostsTable client:idle initialData={initialData} />
+</AdminLayout>
+

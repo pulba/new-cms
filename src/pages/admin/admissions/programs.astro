@@ -1,0 +1,30 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { AdmissionProgramManager } from "@/components/admin/AdmissionProgramManager";
+import { db } from "@/db";
+import { admissionPrograms, registrations } from "@/db/schema";
+import { desc, eq, sql } from "drizzle-orm";
+
+// SSR: fetch all programs with registration counts — no API waterfall
+const allPrograms = await db
+  .select()
+  .from(admissionPrograms)
+  .orderBy(desc(admissionPrograms.createdAt));
+
+const programsWithCounts = await Promise.all(
+  allPrograms.map(async (p) => {
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(registrations)
+      .where(eq(registrations.programId, p.id));
+    return {
+      ...p,
+      totalRegistrations: countResult[0]?.count || 0,
+    };
+  })
+);
+---
+
+<AdminLayout title="Program Penerimaan">
+  <AdmissionProgramManager client:idle initialData={programsWithCounts} />
+</AdminLayout>

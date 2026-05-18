@@ -1,0 +1,21 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { AdmissionMajorManager } from "@/components/admin/AdmissionMajorManager";
+import { db } from "@/db";
+import { admissionPrograms } from "@/db/schema";
+import { desc } from "drizzle-orm";
+
+// SSR: fetch programs list for the dropdown — no API waterfall
+const allPrograms = await db
+  .select({
+    id: admissionPrograms.id,
+    title: admissionPrograms.title,
+    enableMajorSelection: admissionPrograms.enableMajorSelection,
+  })
+  .from(admissionPrograms)
+  .orderBy(desc(admissionPrograms.createdAt));
+---
+
+<AdminLayout title="Manajemen Jurusan">
+  <AdmissionMajorManager client:idle initialPrograms={allPrograms} />
+</AdminLayout>

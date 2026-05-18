@@ -1,0 +1,82 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import { RegistrationManager } from "@/components/admin/RegistrationManager";
+import { db } from "@/db";
+import {
+  registrations,
+  admissionPrograms,
+  admissionMajors,
+} from "@/db/schema";
+import { desc, eq, sql } from "drizzle-orm";
+
+// SSR: fetch initial page of registrations with program/major names — no API waterfall
+const limit = 20;
+const regs = await db
+  .select({
+    id: registrations.id,
+    registrationNumber: registrations.registrationNumber,
+    programId: registrations.programId,
+    majorId: registrations.majorId,
+    status: registrations.status,
+    adminNote: registrations.adminNote,
+    fullName: registrations.fullName,
+    nickName: registrations.nickName,
+    birthPlace: registrations.birthPlace,
+    birthDate: registrations.birthDate,
+    gender: registrations.gender,
+    religion: registrations.religion,
+    phone: registrations.phone,
+    email: registrations.email,
+    address: registrations.address,
+    originSchool: registrations.originSchool,
+    originSchoolAddress: registrations.originSchoolAddress,
+    fatherName: registrations.fatherName,
+    fatherPhone: registrations.fatherPhone,
+    fatherOccupation: registrations.fatherOccupation,
+    motherName: registrations.motherName,
+    motherPhone: registrations.motherPhone,
+    motherOccupation: registrations.motherOccupation,
+    createdAt: registrations.createdAt,
+    updatedAt: registrations.updatedAt,
+    programTitle: admissionPrograms.title,
+    majorName: admissionMajors.name,
+  })
+  .from(registrations)
+  .leftJoin(admissionPrograms, eq(registrations.programId, admissionPrograms.id))
+  .leftJoin(admissionMajors, eq(registrations.majorId, admissionMajors.id))
+  .orderBy(desc(registrations.createdAt))
+  .limit(limit);
+
+const countResult = await db
+  .select({ count: sql<number>`count(*)` })
+  .from(registrations);
+
+const total = countResult[0]?.count || 0;
+
+// SSR: fetch programs for filter dropdown
+const programsList = await db
+  .select({
+    id: admissionPrograms.id,
+    title: admissionPrograms.title,
+  })
+  .from(admissionPrograms)
+  .orderBy(desc(admissionPrograms.createdAt));
+
+const initialData = {
+  data: regs,
+  pagination: {
+    page: 1,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  },
+};
+---
+
+<AdminLayout title="Data Pendaftar">
+  <RegistrationManager
+    client:idle
+    initialData={initialData}
+    initialPrograms={programsList}
+  />
+</AdminLayout>
