@@ -3,7 +3,7 @@ compatibility_date = "2024-09-23"
 compatibility_flags = [ "nodejs_compat" ]
 pages_build_output_dir = "dist"
 
-# Jika Anda ingin mengaktifkan KV binding (opsional, karena session sudah dimatikan via astro.config.mjs):
-# [[kv_namespaces]]
-# binding = "SESSION"
-# id = "MASUKKAN_ID_KV_NAMESPACE_ANDA_DI_SINI"
+[[kv_namespaces]]
+binding = "SESSION"
+id = "5671c9908ce441a489126cfc946596bd"
+
