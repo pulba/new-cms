@@ -3,7 +3,6 @@ compatibility_date = "2024-09-23"
 compatibility_flags = [ "nodejs_compat" ]
 pages_build_output_dir = "dist"
 
-# KV Namespace for Astro sessions
-[[kv_namespaces]]
-binding = "SESSION"
-id = "placeholder"
+# KV binding for Astro sessions — configure via Cloudflare Dashboard > Settings > Bindings
+# Do NOT define [[kv_namespaces]] here for Pages projects.
+# Instead, add the binding named "SESSION" in the dashboard.
