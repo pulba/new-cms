@@ -2,14 +2,8 @@ import type { APIRoute } from "astro";
 import { db } from "@/db";
 import { media, posts, pages, banners, galleries, staff, osisMembers, users, schoolProfile, activityLogs } from "@/db/schema";
 import { eq, or } from "drizzle-orm";
-import { v2 as cloudinary } from "cloudinary";
+import { destroyFromCloudinary } from "../upload";
 import { checkMediaOperationRateLimit } from "@/lib/ratelimit";
-
-cloudinary.config({
-  cloud_name: import.meta.env.CLOUDINARY_CLOUD_NAME,
-  api_key: import.meta.env.CLOUDINARY_API_KEY,
-  api_secret: import.meta.env.CLOUDINARY_API_SECRET,
-});
 
 export const DELETE: APIRoute = async ({ params, locals }) => {
   try {
@@ -102,7 +96,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
     let isOrphanRecovered = false;
 
     if (targetPublicId) {
-      const cloudinaryResult = await cloudinary.uploader.destroy(targetPublicId);
+      const cloudinaryResult = await destroyFromCloudinary(targetPublicId);
       
       if (cloudinaryResult.result === "ok") {
         isOrphanRecovered = false; // Normal success
@@ -113,7 +107,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
         throw new Error(`Cloudinary destroy failed: ${cloudinaryResult.result}`);
       }
     } else {
-      // Legacy files without publicId (should be 0 after backfill, but safe to allow delete DB only if no publicId)
+      // Legacy files without publicId
       isOrphanRecovered = true;
     }
 
