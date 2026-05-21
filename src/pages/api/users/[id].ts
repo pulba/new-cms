@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { db } from "@/db";
 import { users, activityLogs } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { getEnv } from "@/lib/context";
 
 const OWNER_EMAIL_KEY = "OWNER_ADMIN_EMAIL";
 
@@ -39,7 +40,7 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
-    const ownerEmail = (import.meta.env[OWNER_EMAIL_KEY] || "").toLowerCase();
+    const ownerEmail = (getEnv(OWNER_EMAIL_KEY) || "").toLowerCase();
     const isTargetOwner = targetUser.email.toLowerCase() === ownerEmail;
     const isSelf = locals.user.id === targetId;
     const now = new Date().toISOString();

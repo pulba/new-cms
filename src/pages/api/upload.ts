@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { db } from "@/db";
 import { media } from "@/db/schema";
 import { checkMediaOperationRateLimit, getUploadCost } from "@/lib/ratelimit";
+import { getEnv } from "@/lib/context";
 
 /**
  * Cloudinary upload via REST API (no SDK — Workers compatible).
@@ -18,9 +19,9 @@ async function uploadToCloudinary(
   width: number;
   height: number;
 }> {
-  const cloudName = import.meta.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = import.meta.env.CLOUDINARY_API_KEY;
-  const apiSecret = import.meta.env.CLOUDINARY_API_SECRET;
+  const cloudName = getEnv('CLOUDINARY_CLOUD_NAME');
+  const apiKey = getEnv('CLOUDINARY_API_KEY');
+  const apiSecret = getEnv('CLOUDINARY_API_SECRET');
 
   // Generate signature
   const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -64,9 +65,9 @@ async function uploadToCloudinary(
  * Cloudinary destroy via REST API (no SDK).
  */
 async function destroyFromCloudinary(publicId: string): Promise<{ result: string }> {
-  const cloudName = import.meta.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = import.meta.env.CLOUDINARY_API_KEY;
-  const apiSecret = import.meta.env.CLOUDINARY_API_SECRET;
+  const cloudName = getEnv('CLOUDINARY_CLOUD_NAME');
+  const apiKey = getEnv('CLOUDINARY_API_KEY');
+  const apiSecret = getEnv('CLOUDINARY_API_SECRET');
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const paramsToSign = `public_id=${publicId}&timestamp=${timestamp}`;

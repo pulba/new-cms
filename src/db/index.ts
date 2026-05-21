@@ -1,10 +1,27 @@
 import { createClient } from '@libsql/client/web';
 import { drizzle } from 'drizzle-orm/libsql';
 import * as schema from './schema';
+import { getEnv } from '@/lib/context';
 
-const client = createClient({
-  url: import.meta.env.TURSO_CONNECTION_URL || '',
-  authToken: import.meta.env.TURSO_AUTH_TOKEN || '',
+let cachedDb: any = null;
+
+function getDbInstance() {
+  if (!cachedDb) {
+    const url = getEnv('TURSO_CONNECTION_URL') || getEnv('TURSO_DATABASE_URL');
+    const authToken = getEnv('TURSO_AUTH_TOKEN');
+    const client = createClient({ url, authToken });
+    cachedDb = drizzle(client, { schema });
+  }
+  return cachedDb;
+}
+
+export const db = new Proxy({} as any, {
+  get(target, prop, receiver) {
+    const instance = getDbInstance();
+    const value = Reflect.get(instance, prop, receiver);
+    if (typeof value === 'function') {
+      return value.bind(instance);
+    }
+    return value;
+  }
 });
-
-export const db = drizzle(client, { schema });

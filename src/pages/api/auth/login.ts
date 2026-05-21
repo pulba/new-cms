@@ -4,6 +4,7 @@ import {
   signSessionToken,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth-server";
+import { getEnv } from "@/lib/context";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq, count, and, ne } from "drizzle-orm";
@@ -51,7 +52,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
 
     // ─── Step 2: Authorization — email-based DB lookup ─────────
-    const ownerEmail = import.meta.env.OWNER_ADMIN_EMAIL;
+    const ownerEmail = getEnv('OWNER_ADMIN_EMAIL');
     const now = new Date().toISOString();
 
     let existingUser = await db.query.users.findFirst({

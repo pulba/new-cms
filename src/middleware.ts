@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { checkAdminMutationRateLimit, checkPublicReadRateLimit } from "@/lib/ratelimit";
+import { requestContext } from "@/lib/context";
+
 
 // ─── Route Classification ───────────────────────────────────────
 // Routes that NEVER require authentication
@@ -91,125 +93,127 @@ function requiresAuth(pathname: string, method: string): boolean {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  const {
-    url: { pathname },
-    request: { method },
-    request,
-    cookies,
-    redirect,
-  } = context;
+  return requestContext.run({ env: context.locals.runtime?.env || {} }, async () => {
+    const {
+      url: { pathname },
+      request: { method },
+      request,
+      cookies,
+      redirect,
+    } = context;
 
-  if (!requiresAuth(pathname, method)) {
-    // ─── Public Read API Rate Limiting (Phase 4) ─────────────
-    // Only for GET /api/* routes (not pages, not static assets)
-    if (
-      pathname.startsWith("/api/") &&
-      method.toUpperCase() === "GET" &&
-      !PUBLIC_READ_LIMITER_EXCLUSIONS.has(pathname)
-    ) {
-      const rl = await checkPublicReadRateLimit(request, pathname);
+    if (!requiresAuth(pathname, method)) {
+      // ─── Public Read API Rate Limiting (Phase 4) ─────────────
+      // Only for GET /api/* routes (not pages, not static assets)
+      if (
+        pathname.startsWith("/api/") &&
+        method.toUpperCase() === "GET" &&
+        !PUBLIC_READ_LIMITER_EXCLUSIONS.has(pathname)
+      ) {
+        const rl = await checkPublicReadRateLimit(request, pathname);
+        if (!rl.allowed) return rl.response!;
+      }
+
+      return next();
+    }
+
+    // ─── Authentication ─────────────────────────────────────────
+    const sessionCookie = cookies.get(SESSION_COOKIE_NAME)?.value;
+
+    const isApiRoute = pathname.startsWith("/api/");
+
+    if (!sessionCookie) {
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: no session" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return redirect("/admin/login");
+    }
+
+    // Verify custom session JWT (HS256, zero HTTP calls, local crypto only)
+    let tokenPayload;
+    try {
+      tokenPayload = await verifySessionToken(sessionCookie);
+    } catch {
+      // Token expired, tampered, or wrong issuer/audience
+      cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: invalid or expired session" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return redirect("/admin/login");
+    }
+
+    // ─── Authorization (Database Lookup by Email) ───────────────
+    const email = tokenPayload.email;
+    if (!email) {
+      cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: no email in session" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return redirect("/admin/login");
+    }
+
+    const dbUser = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
+
+    if (!dbUser || !dbUser.isActive) {
+      // User not registered in DB or suspended
+      cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({
+            error: dbUser
+              ? "Forbidden: account suspended"
+              : "Forbidden: unregistered account",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return redirect("/admin/login");
+    }
+
+    // ─── Session Version Revocation Check ───────────────────────
+    if (tokenPayload.sv !== dbUser.sessionVersion) {
+      // Session was revoked (admin incremented sessionVersion)
+      cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: session revoked" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return redirect("/admin/login");
+    }
+
+    // ─── Attach Authorized User to Locals ───────────────────────
+    context.locals.user = {
+      id: dbUser.id,
+      uid: dbUser.uid,
+      email: dbUser.email,
+      name: dbUser.displayName || "Admin",
+      displayName: dbUser.displayName || null,
+      photoUrl: dbUser.photoUrl || null,
+      role: dbUser.role || "operator",
+    };
+
+    // ─── Admin Mutation Rate Limiting (Phase 3) ─────────────────
+    // Only check for API mutations (POST/PUT/PATCH/DELETE)
+    // Skips routes with dedicated Phase 1/2 limiters automatically
+    if (isApiRoute && MUTATION_METHODS.has(method.toUpperCase())) {
+      const rl = await checkAdminMutationRateLimit(dbUser.id, pathname, method);
       if (!rl.allowed) return rl.response!;
     }
 
     return next();
-  }
-
-  // ─── Authentication ─────────────────────────────────────────
-  const sessionCookie = cookies.get(SESSION_COOKIE_NAME)?.value;
-
-  const isApiRoute = pathname.startsWith("/api/");
-
-  if (!sessionCookie) {
-    if (isApiRoute) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized: no session" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    return redirect("/admin/login");
-  }
-
-  // Verify custom session JWT (HS256, zero HTTP calls, local crypto only)
-  let tokenPayload;
-  try {
-    tokenPayload = await verifySessionToken(sessionCookie);
-  } catch {
-    // Token expired, tampered, or wrong issuer/audience
-    cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
-    if (isApiRoute) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized: invalid or expired session" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    return redirect("/admin/login");
-  }
-
-  // ─── Authorization (Database Lookup by Email) ───────────────
-  const email = tokenPayload.email;
-  if (!email) {
-    cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
-    if (isApiRoute) {
-      return new Response(
-        JSON.stringify({ error: "Forbidden: no email in session" }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    return redirect("/admin/login");
-  }
-
-  const dbUser = await db.query.users.findFirst({
-    where: eq(users.email, email),
   });
-
-  if (!dbUser || !dbUser.isActive) {
-    // User not registered in DB or suspended
-    cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
-    if (isApiRoute) {
-      return new Response(
-        JSON.stringify({
-          error: dbUser
-            ? "Forbidden: account suspended"
-            : "Forbidden: unregistered account",
-        }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    return redirect("/admin/login");
-  }
-
-  // ─── Session Version Revocation Check ───────────────────────
-  if (tokenPayload.sv !== dbUser.sessionVersion) {
-    // Session was revoked (admin incremented sessionVersion)
-    cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
-    if (isApiRoute) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized: session revoked" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    return redirect("/admin/login");
-  }
-
-  // ─── Attach Authorized User to Locals ───────────────────────
-  context.locals.user = {
-    id: dbUser.id,
-    uid: dbUser.uid,
-    email: dbUser.email,
-    name: dbUser.displayName || "Admin",
-    displayName: dbUser.displayName || null,
-    photoUrl: dbUser.photoUrl || null,
-    role: dbUser.role || "operator",
-  };
-
-  // ─── Admin Mutation Rate Limiting (Phase 3) ─────────────────
-  // Only check for API mutations (POST/PUT/PATCH/DELETE)
-  // Skips routes with dedicated Phase 1/2 limiters automatically
-  if (isApiRoute && MUTATION_METHODS.has(method.toUpperCase())) {
-    const rl = await checkAdminMutationRateLimit(dbUser.id, pathname, method);
-    if (!rl.allowed) return rl.response!;
-  }
-
-  return next();
 });
 

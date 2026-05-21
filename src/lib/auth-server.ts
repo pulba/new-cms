@@ -1,8 +1,7 @@
 import * as jose from "jose";
+import { getEnv } from "@/lib/context";
 
 // ─── Constants ────────────────────────────────────────────────────
-const FIREBASE_PROJECT_ID = import.meta.env.PUBLIC_FIREBASE_PROJECT_ID;
-const SESSION_SECRET_RAW = import.meta.env.SESSION_SECRET || "";
 const SESSION_ISSUER = "educms";
 const SESSION_AUDIENCE = "educms-admin";
 
@@ -45,8 +44,11 @@ async function getGoogleCerts(): Promise<Record<string, string>> {
   return cachedCerts;
 }
 
-// Session signing key — encoded once, reused forever.
-const SESSION_KEY = new TextEncoder().encode(SESSION_SECRET_RAW);
+// Session signing key getter — dynamically fetches session secret to be Cloudflare runtime compatible.
+function getSessionKey() {
+  const secret = getEnv('SESSION_SECRET') || "default-secret-key-fallback-for-security";
+  return new TextEncoder().encode(secret);
+}
 
 // Cookie name — __Host- prefix enforces Secure + Path=/ at browser level.
 // In dev (HTTP), __Host- cookies are rejected, so we fall back.
@@ -103,9 +105,10 @@ export async function verifyFirebaseIdToken(
   const publicKey = await jose.importX509(cert, "RS256");
 
   // Step 4: Verify signature + standard claims
+  const firebaseProjectId = getEnv('PUBLIC_FIREBASE_PROJECT_ID');
   const { payload } = await jose.jwtVerify(idToken, publicKey, {
-    issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,
-    audience: FIREBASE_PROJECT_ID,
+    issuer: `https://securetoken.google.com/${firebaseProjectId}`,
+    audience: firebaseProjectId,
   });
 
   // Step 5: sub must exist
@@ -158,7 +161,7 @@ export async function signSessionToken(
     .setSubject(payload.email)
     .setIssuer(SESSION_ISSUER)
     .setAudience(SESSION_AUDIENCE)
-    .sign(SESSION_KEY);
+    .sign(getSessionKey());
 }
 
 // ─── 3. Verify Custom Session JWT ────────────────────────────────
@@ -173,7 +176,7 @@ export async function signSessionToken(
 export async function verifySessionToken(
   token: string
 ): Promise<jose.JWTPayload & SessionPayload> {
-  const { payload } = await jose.jwtVerify(token, SESSION_KEY, {
+  const { payload } = await jose.jwtVerify(token, getSessionKey(), {
     issuer: SESSION_ISSUER,
     audience: SESSION_AUDIENCE,
   });

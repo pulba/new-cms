@@ -1,13 +1,18 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis/cloudflare";
+import { getEnv } from "@/lib/context";
 
 // ─── DEV Bypass Strategy ──────────────────────────────────────────
 // Rate limiting is bypassed when:
 // 1. Running in development mode (import.meta.env.DEV)
 // 2. RATE_LIMIT_DISABLED=true environment variable is set
+// 3. Upstash Redis credentials are not configured
 function isRateLimitDisabled(): boolean {
   if (import.meta.env.DEV) return true;
-  if (import.meta.env.RATE_LIMIT_DISABLED === "true") return true;
+  if (getEnv('RATE_LIMIT_DISABLED') === "true") return true;
+  if (!getEnv('UPSTASH_REDIS_REST_URL') || !getEnv('UPSTASH_REDIS_REST_TOKEN')) {
+    return true;
+  }
   return false;
 }
 
@@ -18,8 +23,8 @@ let _redis: Redis | null = null;
 function getRedis(): Redis {
   if (!_redis) {
     _redis = new Redis({
-      url: import.meta.env.UPSTASH_REDIS_REST_URL,
-      token: import.meta.env.UPSTASH_REDIS_REST_TOKEN,
+      url: getEnv('UPSTASH_REDIS_REST_URL'),
+      token: getEnv('UPSTASH_REDIS_REST_TOKEN'),
     });
   }
   return _redis;
